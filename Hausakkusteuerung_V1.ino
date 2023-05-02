@@ -57,18 +57,18 @@ int16_t BatSpg = 5;
 int16_t BatStr = 6;
 unsigned long previousMillis = millis(); // Zeitmessung, um die Wh messen zu können
 const long interval = 1000; // Intervall zwischen 2 Messungen
-long Spanne;
-float BatLeistung = 253;
+int Spanne;
+float BatLeistung = 0.00;
 String Akkuleistung = "Bezug";
-float WhImported = 3760;
-float WhExported = 5860;
-float TeilSpg = 442;  // adjustment to voltage divider needed
-float TeilStr = 332;  // adjustment to current Sensor needed
-float BatSpannung = 5;
-float BatStrom = 5;
-float BatKap = 14784000;
-float BatSOC = 2956800;
-float SOC = 20;
+float WhImported = 0.00;
+float WhExported = 0.00;
+float TeilSpg = 439.00;  // adjustment to voltage divider needed
+float TeilStr = 332.00;  // adjustment to current Sensor needed
+float BatSpannung = 5.0;
+float BatStrom = 5.0;
+float BatKap = 14784000.00;
+float BatSOC = 14784000.00;
+float SOC = 100.00;
 long lastMsg = 0;
 char msg[50];
 int value = 0;
@@ -82,7 +82,7 @@ const int ledPin = D4;
 String Lader = "Nix";
 String WR = "Nix";
 byte shelly2 = 0;
-
+String Test = "Anfang";
 
 void handleRoot();              // function prototypes for HTTP handlers
 void handleNotFound();
@@ -326,10 +326,13 @@ void callback(char* topic, byte* message, unsigned int length) {
       State of Charge = " + String(SOC) + "<br>\
       Wattstunden exportiert = " + String(WhExported) + "<br>\
       Wattstunden Importiert = " + String(WhImported) + "<br>\
+      Spanne = " + String(Spanne) + "<br>\
       Lader = " + Lader + "<br>\
       Wechselrichter = " + WR + "<br></p>\
+      Test = " + Test + "<br></p>\
     </body>\
     </html>";
+Test = "Zurückgesetzt";
 }
 
 // test MQTT connection
@@ -388,32 +391,29 @@ unsigned long currentMillis = millis();
     // Suppress AD converter noise
     if (BatStrom < 0.1 && BatStrom > -0.1) {
       BatStrom = 0;
-    }
+     }
     
     BatLeistung = BatSpannung * BatStrom;
     
     // is Battery full?
     if (BatSpannung > 57.5) {
       BatSOC = BatKap;
+      Test = "Akku voll";
     }
 
-    // Calculate SOC of Battery
-    BatSOC = BatSOC + (BatLeistung / (3600 * Spanne));
-    SOC = BatSOC / (BatKap / 100);
-
-  if (shelly2 == 1) {  // if charger is on, set potentiometer value (X9C103s digital Poti)
-    if(Potiint > 0){  // more charging current!
-      pot.increase(1);
-      delay(200);  
-      Potiwert++; 
-    }
+    if (shelly2 == 1) {  // if charger is on, set potentiometer value (X9C103s digital Poti)
+      if(Potiint > 0){  // more charging current!
+        pot.increase(1);
+        delay(200);  
+        Potiwert++; 
+      }
     
-    if(Potiint < 0)  // less charging current!
-    {
-      pot.decrease(1);
-      delay(200);
-      Potiwert--;
-    }
+      if(Potiint < 0)  // less charging current!
+      {
+        pot.decrease(1);
+        delay(200);
+        Potiwert--;
+      }
   }
   else {
     Potiwert = 0;  // if charger is off, set potentiometer to 0
@@ -422,7 +422,6 @@ unsigned long currentMillis = millis();
       delay(20);  
     }
   } 
-  }
   
   // align Potiwert to real X9C103S adjustment
   if (Potiwert < 0) { 
@@ -432,16 +431,21 @@ unsigned long currentMillis = millis();
     Potiwert = 100;
   }
   
+  // Calculate SOC of Battery
+  BatSOC = BatSOC + ((BatLeistung / 3600.00) * (Spanne / 1000.00));
   
+    
   if (BatLeistung < 0)
   {
-    WhExported = WhExported - (BatLeistung / (3600 * Spanne));  // Watthours exported for OpenWB Wallbox
+    WhExported = WhExported - ((BatLeistung / 3600.00) * (Spanne / 1000.00));  // Watthours exported for OpenWB Wallbox
   }
   else
   {
-    WhImported = WhImported + (BatLeistung / (3600 * Spanne));  // Watthours imported for OpenWB Wallbox
+    WhImported = WhImported + ((BatLeistung / 3600.00) * (Spanne / 1000.00));  // Watthours imported for OpenWB Wallbox
   }
+  SOC = (BatSOC / BatKap) * 100.00;
   }
+}
 
 void handleRoot() {
   server.send(200, "text/html", postForms);
