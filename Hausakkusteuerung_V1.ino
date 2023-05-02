@@ -50,7 +50,7 @@ const char* deviceName = HOSTNAME;
 const char* mqtt_server = "192.168.0.123";
 
 // Pins for Potcontrol
-DigiPot pot(D7,D6,D8);
+DigiPot pot(D7,D6,D8);  // Format: INC; U/D; CS means D7=>INC; D6=>U/D; D8=>CS
 
 // Setup der Variablen
 int16_t BatSpg = 5;
@@ -58,19 +58,22 @@ int16_t BatStr = 6;
 unsigned long previousMillis = millis(); // Zeitmessung, um die Wh messen zu können
 const long interval = 1000; // Intervall zwischen 2 Messungen
 long Spanne;
-int BatLeistung = 253;
+float BatLeistung = 253;
 String Akkuleistung = "Bezug";
 float WhImported = 3760;
 float WhExported = 5860;
 float TeilSpg = 440;
-float TeilStr = 320;
+float TeilStr = 349;
 float BatSpannung = 5;
 float BatStrom = 5;
+float BatKap = 14784000;
+float BatSOC = 2956800;
+float SOC = 20;
 long lastMsg = 0;
 char msg[50];
 int value = 0;
 String messageTemp = "0";
-int Leistung = 0;
+float Leistung = 0;
 int Mittelwert = 0;
 int Potiint = 0;
 int Potiwert = 0;
@@ -197,6 +200,7 @@ void setup() {
   server.begin();                           // Actually start the server
   Serial.println("HTTP server started");
   
+  // Set Potentiometer Wiper to 0
   for (int i = 0; i < 100; i++) {
   pot.decrease(1);
       delay(20);  
@@ -319,6 +323,8 @@ void callback(char* topic, byte* message, unsigned int length) {
       Batteriespannung = " + String(BatSpannung) + "<br>\
       Batteriestrom = " + String(BatStrom) + "<br>\
       Batterieleistung = " + String(BatLeistung) + "<br>\
+      Ladezustand [Wh] = " + String(BatSOC) + "<br>\
+      State of Charge = " + String(SOC) + "<br>\
       Wattstunden exportiert = " + String(WhExported) + "<br>\
       Wattstunden Importiert = " + String(WhImported) + "<br>\
       Lader = " + Lader + "<br>\
@@ -351,10 +357,6 @@ void reconnect() {
 void loop() {
   // Run the following code only once in a second
 unsigned long currentMillis = millis();
-  if (currentMillis - previousMillis < 0) {
-    previousMillis = currentMillis;
-  }
- 
   if (currentMillis - previousMillis >= interval) { 
     Spanne = currentMillis - previousMillis;
     previousMillis = currentMillis; 
@@ -383,10 +385,22 @@ unsigned long currentMillis = millis();
     // calculate Battery voltage and current and then Battery power
     BatSpannung = BatSpg / TeilSpg;  // battery voltage due to voltage divider
     BatStrom = (BatStr - 17666) / TeilStr; // offset added as the current sensor (Allegro ACS758LCB-050B-PFF-T) is bidirectional, so the zero point is in "the middle"
-    if (BatStrom < 0,1) {
+    
+    // Suppress AD converter noise
+    if (BatStrom < 0.1 && BatStrom > -0.1) {
       BatStrom = 0;
     }
+    
     BatLeistung = BatSpannung * BatStrom;
+    
+    // is Battery full?
+    if (BatSpannung > 57.5) {
+      BatSOC = BatKap;
+    }
+
+    // Calculate SOC of Battery
+    BatSOC = BatSOC + (BatLeistung / (3600 * Spanne));
+    SOC = BatSOC / (BatKap / 100);
 
   if (shelly2 == 1) {  // if charger is on, set potentiometer value (X9C103s digital Poti)
     if(Potiint > 0){  // more charging current!
@@ -395,25 +409,28 @@ unsigned long currentMillis = millis();
       Potiwert++; 
     }
     
-    if(Potiint <= 0)  // less charging current!
+    if(Potiint < 0)  // less charging current!
     {
       pot.decrease(1);
       delay(200);
       Potiwert--;
     }
-   
   }
   else {
     Potiwert = 0;  // if charger is off, set potentiometer to 0
+    for (int i = 0; i < 100; i++) {
+      pot.decrease(1);
+      delay(20);  
+    }
   } 
   }
   
-  
+  // align Potiwert to real X9C103S adjustment
   if (Potiwert < 0) { 
-    Potiwert =0;
+    Potiwert = 0;
   }
   if (Potiwert > 100) {   // X9C103S has only 100 steps
-    Potiwert =100;
+    Potiwert = 100;
   }
   
   
