@@ -62,8 +62,8 @@ float BatLeistung = 253;
 String Akkuleistung = "Bezug";
 float WhImported = 3760;
 float WhExported = 5860;
-float TeilSpg = 440;
-float TeilStr = 349;
+float TeilSpg = 442;  // adjustment to voltage divider needed
+float TeilStr = 332;  // adjustment to current Sensor needed
 float BatSpannung = 5;
 float BatStrom = 5;
 float BatKap = 14784000;
@@ -81,7 +81,6 @@ String postForms = "Noch nix";
 const int ledPin = D4;
 String Lader = "Nix";
 String WR = "Nix";
-float volts0, volts1, volts2, volts3;
 byte shelly2 = 0;
 
 
@@ -384,7 +383,7 @@ unsigned long currentMillis = millis();
 
     // calculate Battery voltage and current and then Battery power
     BatSpannung = BatSpg / TeilSpg;  // battery voltage due to voltage divider
-    BatStrom = (BatStr - 17666) / TeilStr; // offset added as the current sensor (Allegro ACS758LCB-050B-PFF-T) is bidirectional, so the zero point is in "the middle"
+    BatStrom = (BatStr - 18840) / TeilStr; // offset added as the current sensor (Allegro ACS758LCB-050B-PFF-T) is bidirectional, so the zero point is in "the middle"
     
     // Suppress AD converter noise
     if (BatStrom < 0.1 && BatStrom > -0.1) {
