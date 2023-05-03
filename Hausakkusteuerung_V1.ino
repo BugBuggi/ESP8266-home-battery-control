@@ -55,6 +55,7 @@ DigiPot pot(D7,D6,D8);  // Format: INC; U/D; CS means D7=>INC; D6=>U/D; D8=>CS
 // Setup der Variablen
 int16_t BatSpg = 5;
 int16_t BatStr = 6;
+int16_t Nullpunkt = 18800;
 unsigned long previousMillis = millis(); // Zeitmessung, um die Wh messen zu können
 const long interval = 1000; // Intervall zwischen 2 Messungen
 int Spanne;
@@ -63,7 +64,7 @@ String Akkuleistung = "Bezug";
 float WhImported = 0.00;
 float WhExported = 0.00;
 float TeilSpg = 439.00;  // adjustment to voltage divider needed
-float TeilStr = 332.00;  // adjustment to current Sensor needed
+float TeilStr = 320.00;  // adjustment to current Sensor needed. For the used Allegro and Gain 1, we have 40mV/A for the Allegro, and 0.125mV/Bit for the ADS1115, this leads to a factor of 40/0.125 = 320
 float BatSpannung = 5.0;
 float BatStrom = 5.0;
 float BatKap = 14784000.00;
@@ -248,7 +249,7 @@ void callback(char* topic, byte* message, unsigned int length) {
     Serial.print(messageTemp);
     Serial.print("Changing output to ");
     Leistung = -messageTemp.toInt();
-    Mittelwert = (9 * Mittelwert + Leistung) / 10; // floating mean value to decide whether charger or inverter to switch on
+    Mittelwert = (29 * Mittelwert + Leistung) / 30; // floating mean value to decide whether charger or inverter to switch on
     Serial.print("Mittelwert = ");
     Serial.println(String(Mittelwert));
     Potiint = Leistung / 40;  // potentiometer value to set new value for digital poti
@@ -261,12 +262,15 @@ void callback(char* topic, byte* message, unsigned int length) {
       digitalWrite (TX, HIGH);  // switch Inverter on
       Lader = "Aus";
       WR = "Ein";
+      Test = "WR entlädt"
     }
     else if (Mittelwert > 150)
     {
       digitalWrite (RX, HIGH);  // switch Charger on
       digitalWrite (TX, LOW);  // switch Inverter off
+      If (Test != "Akku voll") {
       Lader = "Ein";
+      }
       WR = "Aus";
     }
     else {
@@ -274,6 +278,7 @@ void callback(char* topic, byte* message, unsigned int length) {
       digitalWrite (TX, LOW);  // switch Inverter off
       Lader = "Aus";
       WR = "Aus";
+      Nullpunkt = BatStr; // correct temperature drift of Allegro at zero current
     }
     }
     
@@ -286,11 +291,6 @@ void callback(char* topic, byte* message, unsigned int length) {
     {
       shelly2 = 0;
     }}
-    
-    // Changes the potentiometer value according to the message and post it via serial
-    Serial.println(String(Leistung));
-    Serial.print("Potiwert = ");
-    Serial.println(String(Potiwert));
     
     // decide whether we draw power from the net or if we supply power to the net
     if (Leistung < 0) {
@@ -319,6 +319,7 @@ void callback(char* topic, byte* message, unsigned int length) {
       Mittelwert = " + String(Mittelwert) + "<br>\
       AD-Wert Spannung = " + String(BatSpg) + "<br>\
       AD-Wert Strom = " + String(BatStr) + "<br>\
+      Nullpunkt = " + String(Nullpunkt) + "<br>\
       Batteriespannung = " + String(BatSpannung) + "<br>\
       Batteriestrom = " + String(BatStrom) + "<br>\
       Batterieleistung = " + String(BatLeistung) + "<br>\
@@ -346,6 +347,7 @@ void reconnect() {
       // Subscribe topics needed
       client.subscribe("openWB/evu/W");
       client.subscribe("shellies/shellyplug-s-3CE90EC7E630/relay/0");
+      client.subscribe("openWB/lp/1/W");
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
@@ -386,19 +388,22 @@ unsigned long currentMillis = millis();
 
     // calculate Battery voltage and current and then Battery power
     BatSpannung = BatSpg / TeilSpg;  // battery voltage due to voltage divider
-    BatStrom = (BatStr - 18840) / TeilStr; // offset added as the current sensor (Allegro ACS758LCB-050B-PFF-T) is bidirectional, so the zero point is in "the middle"
+    BatStrom = (BatStr - Nullpunkt) / TeilStr; // offset added as the current sensor (Allegro ACS758LCB-050B-PFF-T) is bidirectional, so the zero point is in "the middle"
     
     // Suppress AD converter noise
-    if (BatStrom < 0.1 && BatStrom > -0.1) {
+    if (BatStrom < 0.2 && BatStrom > -0.2) {
       BatStrom = 0;
      }
-    
+
+    // calculate battery power. As we have DC, direct multiplication is possible
     BatLeistung = BatSpannung * BatStrom;
     
     // is Battery full?
     if (BatSpannung > 57.5) {
       BatSOC = BatKap;
       Test = "Akku voll";
+      digitalWrite (RX, LOW);  // switch Charger off
+      Lader = "Aus";
     }
 
     if (shelly2 == 1) {  // if charger is on, set potentiometer value (X9C103s digital Poti)
