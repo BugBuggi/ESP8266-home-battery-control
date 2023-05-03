@@ -58,7 +58,7 @@ int16_t BatStr = 6;
 int16_t Nullpunkt = 18800;
 unsigned long previousMillis = millis(); // Zeitmessung, um die Wh messen zu können
 const long interval = 1000; // Intervall zwischen 2 Messungen
-int Spanne;
+float Spanne;
 float BatLeistung = 0.00;
 String Akkuleistung = "Bezug";
 float WhImported = 0.00;
@@ -262,13 +262,13 @@ void callback(char* topic, byte* message, unsigned int length) {
       digitalWrite (TX, HIGH);  // switch Inverter on
       Lader = "Aus";
       WR = "Ein";
-      Test = "WR entlädt"
+      Test = "WR entlädt";
     }
     else if (Mittelwert > 150)
     {
       digitalWrite (RX, HIGH);  // switch Charger on
       digitalWrite (TX, LOW);  // switch Inverter off
-      If (Test != "Akku voll") {
+      if (Test != "Akku voll") {
       Lader = "Ein";
       }
       WR = "Aus";
