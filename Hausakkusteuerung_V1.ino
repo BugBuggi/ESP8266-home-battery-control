@@ -67,9 +67,9 @@ float TeilSpg = 439.00;  // adjustment to voltage divider needed
 float TeilStr = 320.00;  // adjustment to current Sensor needed. For the used Allegro and Gain 1, we have 40mV/A for the Allegro, and 0.125mV/Bit for the ADS1115, this leads to a factor of 40/0.125 = 320
 float BatSpannung = 5.0;
 float BatStrom = 5.0;
-float BatKap = 14784000.00;
-float BatSOC = 14784000.00;
-float SOC = 100.00;
+float BatKap = 14784.00;
+float BatSOC = 14784.00;
+float SOC = 80.00;
 long lastMsg = 0;
 char msg[50];
 int value = 0;
@@ -278,7 +278,7 @@ void callback(char* topic, byte* message, unsigned int length) {
       digitalWrite (TX, LOW);  // switch Inverter off
       Lader = "Aus";
       WR = "Aus";
-      Nullpunkt = BatStr; // correct temperature drift of Allegro at zero current
+      //Nullpunkt = BatStr; // correct temperature drift of Allegro at zero current
     }
     }
     
