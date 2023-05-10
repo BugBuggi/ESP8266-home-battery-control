@@ -27,8 +27,8 @@ PubSubClient client(espClient);
 
 // WIFI
 #ifndef STASSID
-#define STASSID "Fritzbox"
-#define STAPSK "Asternstrasse21"
+#define STASSID "XXX"
+#define STAPSK "YYY"
 #endif
 // host name the ESP8266 will show in WLAN
 #define HOSTNAME                     "Hausakkusteuerung"
