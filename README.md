@@ -8,4 +8,4 @@ For switching on and off the charger and the inverter, two solid state relais ar
 The connection to and from the OpenWB wallbox, which has a builtin Mosquitto MQTT broker is done via MQTT.
 
 The current circuit looks like this:
-![Hausakku](https://user-images.githubusercontent.com/12899111/235508035-44413899-c5f5-417d-9cb4-c3c2148462b9.png)
+![Hausakkusteuerung_V1](https://github.com/BugBuggi/ESP8266-home-battery-control/assets/12899111/bbf9fc09-13e8-4bca-9bb5-ed2190c69bfb)
