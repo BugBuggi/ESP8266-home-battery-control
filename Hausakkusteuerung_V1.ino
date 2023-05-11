@@ -7,6 +7,7 @@
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 #include <PubSubClient.h>
+#include <NTPClient.h>
 #include <Adafruit_ADS1X15.h>
 #include <DigiPotX9Cxxx.h>
 
@@ -28,7 +29,7 @@ PubSubClient client(espClient);
 // WIFI
 #ifndef STASSID
 #define STASSID "SSID"
-#define STAPSK "Password"
+#define STAPSK "PSK"
 #endif
 // host name the ESP8266 will show in WLAN
 #define HOSTNAME                     "Hausakkusteuerung"
@@ -68,8 +69,8 @@ float TeilStr = 320.00;  // adjustment to current Sensor needed. For the used Al
 float BatSpannung = 5.0;
 float BatStrom = 5.0;
 float BatKap = 14784.00;
-float BatSOC = 14784.00;
-float SOC = 80.00;
+float SOC = 60.00;
+float BatSOC = BatKap * (SOC/100);
 long lastMsg = 0;
 char msg[50];
 int value = 0;
@@ -80,10 +81,23 @@ int Potiint = 0;
 int Potiwert = 0;
 String postForms = "Noch nix";
 const int ledPin = D4;
+boolean bLader = false;
+boolean bWR = false;
 String Lader = "Nix";
 String WR = "Nix";
-byte shelly2 = 0;
 String Test = "Anfang";
+boolean Wartungsladung = true;
+float maxSOC = 100.00;
+
+// NTP Client variables
+const long utcOffsetInSeconds = 3600;
+unsigned long EpochTime;
+unsigned long LetzteLadung = 0;
+
+// Define NTP Client to get time
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org", utcOffsetInSeconds);
+
 
 void handleRoot();              // function prototypes for HTTP handlers
 void handleNotFound();
@@ -96,6 +110,11 @@ void setup() {
   // put your setup code here, to run once:
   pinMode(ledPin, OUTPUT);
   digitalWrite(ledPin, HIGH);
+  pinMode(D3, OUTPUT); // Select Pin D3 for switching Charger
+  digitalWrite(D3, HIGH); // Switch Charger off
+  pinMode(D5, OUTPUT); // Select Pin D5 for switching Inverter
+  digitalWrite(D5, HIGH); // Switch Inverter off
+  
 // init serial port
   Serial.begin(SERIAL_SPEED);
   while (!Serial);
@@ -225,6 +244,7 @@ void setup() {
     Serial.println("Failed to initialize ADS.");
     while (1);
   }
+timeClient.begin();
 
 }
 
@@ -249,49 +269,57 @@ void callback(char* topic, byte* message, unsigned int length) {
     Serial.print(messageTemp);
     Serial.print("Changing output to ");
     Leistung = -messageTemp.toInt();
-    Mittelwert = (29 * Mittelwert + Leistung) / 30; // floating mean value to decide whether charger or inverter to switch on
+    Mittelwert = (49 * Mittelwert + Leistung) / 50; // floating mean value to decide whether charger or inverter to switch on
     Serial.print("Mittelwert = ");
     Serial.println(String(Mittelwert));
     Potiint = Leistung / 40;  // potentiometer value to set new value for digital poti
     
     Serial.print("Potiint = ");
     Serial.println(String(Potiint));
+    
     if (Mittelwert < -100)
+     bWR = true;
+    if (Mittelwert > 150)
+     bLader = true;
+    if (Mittelwert < -50)
+     bLader = false;
+    if (Mittelwert > 15)
+     bWR = false;
+    
+    if (bWR)
     {
-      digitalWrite (RX, LOW);  // switch Charger off
-      digitalWrite (TX, HIGH);  // switch Inverter on
+      digitalWrite (D3, HIGH);  // switch Charger off
+      digitalWrite (D5, LOW);  // switch Inverter on
       Lader = "Aus";
+      if (SOC >= 20.00) {
       WR = "Ein";
+      }      
       Test = "WR entlädt";
     }
-    else if (Mittelwert > 150)
+    
+    if (bLader)
     {
-      digitalWrite (RX, HIGH);  // switch Charger on
-      digitalWrite (TX, LOW);  // switch Inverter off
-      if (Test != "Akku voll") {
+      digitalWrite (D3, LOW);  // switch Charger on
+      digitalWrite (D5, HIGH);  // switch Inverter off
+      if (SOC <= maxSOC) {
       Lader = "Ein";
       }
-      WR = "Aus";
+      WR = "Aus";     
     }
-    else {
-      digitalWrite (RX, LOW);  // switch Charger off
-      digitalWrite (TX, LOW);  // switch Inverter off
+    
+    if (!bLader && !bWR) {
+      digitalWrite (D3, HIGH);  // switch Charger off
+      digitalWrite (D5, HIGH);  // switch Inverter off
       Lader = "Aus";
       WR = "Aus";
-      //Nullpunkt = BatStr; // correct temperature drift of Allegro at zero current
+      if (abs(Nullpunkt - BatStr) > 0,2){
+        //delay(5000);
+        Nullpunkt = BatStr; // correct temperature drift of Allegro at zero current
+      }
     }
     }
     
-    // If a message is received on the topic shellies/shellyplug-s-3CE90EC7E630/relay/0, we store this binary value in a variable. 
-    if (String(topic) == "shellies/shellyplug-s-3CE90EC7E630/relay/0") {
-    if (messageTemp == "on") {
-    shelly2 = 1;
-    }
-    else
-    {
-      shelly2 = 0;
-    }}
-    
+   
     // decide whether we draw power from the net or if we supply power to the net
     if (Leistung < 0) {
       Akkuleistung = "Bezug";
@@ -312,8 +340,6 @@ void callback(char* topic, byte* message, unsigned int length) {
     <body>\
       <p><br>Message arrived on topic: " + String(topic) + ". Message: " + messageTemp + "<br>\
       <br>Wir haben " + String(Leistung) + " Watt " + Akkuleistung +"<br>\
-      Negativer Wert = Netzbezug<br>\
-      ShellyPlug2 = " + String(shelly2) + "<br>\
       Potiwert = " + String(Potiwert) + "<br>\
       Potiint = " + String(Potiint) + "<br>\
       Mittelwert = " + String(Mittelwert) + "<br>\
@@ -331,9 +357,10 @@ void callback(char* topic, byte* message, unsigned int length) {
       Lader = " + Lader + "<br>\
       Wechselrichter = " + WR + "<br></p>\
       Test = " + Test + "<br></p>\
+      Epoch Time = " + String(EpochTime) + "<br></p>\
+      Letzte Ladung = " + String(LetzteLadung) + "<br></p>\
     </body>\
     </html>";
-Test = "Zurückgesetzt";
 }
 
 // test MQTT connection
@@ -346,7 +373,6 @@ void reconnect() {
       Serial.println("connected");
       // Subscribe topics needed
       client.subscribe("openWB/evu/W");
-      client.subscribe("shellies/shellyplug-s-3CE90EC7E630/relay/0");
       client.subscribe("openWB/lp/1/W");
     } else {
       Serial.print("failed, rc=");
@@ -361,6 +387,7 @@ void reconnect() {
 void loop() {
   // Run the following code only once in a second
 unsigned long currentMillis = millis();
+  if (currentMillis - previousMillis < 0) previousMillis = currentMillis;
   if (currentMillis - previousMillis >= interval) { 
     Spanne = currentMillis - previousMillis;
     previousMillis = currentMillis; 
@@ -402,29 +429,31 @@ unsigned long currentMillis = millis();
     if (BatSpannung > 57.5) {
       BatSOC = BatKap;
       Test = "Akku voll";
+      Wartungsladung = false;
+      maxSOC = 80;
       digitalWrite (RX, LOW);  // switch Charger off
+      bLader = false;
       Lader = "Aus";
+      timeClient.update();
+      LetzteLadung = timeClient.getEpochTime();
     }
 
-    if (shelly2 == 1) {  // if charger is on, set potentiometer value (X9C103s digital Poti)
+    if (bLader) {  // if charger is on, set potentiometer value (X9C103s digital Poti)
       if(Potiint > 0){  // more charging current!
-        pot.increase(1);
-        delay(200);  
+        pot.increase(1); 
         Potiwert++; 
       }
     
       if(Potiint < 0)  // less charging current!
       {
         pot.decrease(1);
-        delay(200);
         Potiwert--;
       }
   }
   else {
     Potiwert = 0;  // if charger is off, set potentiometer to 0
     for (int i = 0; i < 100; i++) {
-      pot.decrease(1);
-      delay(20);  
+      pot.decrease(1);  
     }
   } 
   
@@ -449,6 +478,28 @@ unsigned long currentMillis = millis();
     WhImported = WhImported + ((BatLeistung / 3600.00) * (Spanne / 1000.00));  // Watthours imported for OpenWB Wallbox
   }
   SOC = (BatSOC / BatKap) * 100.00;
+  
+  // Publish Battery data to OpenWB
+    char msg_out[20];
+    int intLeistung = (int)BatLeistung;
+    sprintf(msg_out, "%d",intLeistung);
+    client.publish("openWB/set/houseBattery/W", msg_out);
+    dtostrf(WhImported,20,2,msg_out);
+    client.publish("openWB/set/houseBattery/WhImported", msg_out);
+    dtostrf(WhExported,20,2,msg_out);
+    client.publish("openWB/set/houseBattery/WhExported", msg_out);
+    int intSOC = (int)SOC;
+    sprintf(msg_out, "%d",intSOC);
+    client.publish("openWB/set/houseBattery/%Soc", msg_out);
+
+    timeClient.update();
+    EpochTime = timeClient.getEpochTime();
+
+    if (!Wartungsladung && EpochTime - LetzteLadung > 3024000) {
+      Wartungsladung = true;
+      maxSOC = 100.00;
+    }
+  
   }
 }
 
@@ -457,6 +508,6 @@ void handleRoot() {
   digitalWrite(ledPin, 0);
 }
 
-void handleNotFound(){
+void handleNotFound() {
   server.send(404, "text/plain", "404: Not found"); // Send HTTP status 404 (Not Found) when there's no handler for the URI in the request
 }
